@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 <git-repo> <project-folder>"
+    exit 1
+}
+
+# Check for correct arguments
+if [ "$#" -ne 2 ]; then
+    usage
+fi
+
+GIT_REPO="$1"
+PROJECT_FOLDER="$2"
+
+# Extract the name of the git repository (assumes last part of the path is the repo name)
+REPO_NAME=$(basename "$GIT_REPO")
+
+# Ensure the specified git repo is in the current directory
+if [ ! -d "$GIT_REPO/.git" ]; then
+    echo "Error: $GIT_REPO is not a valid git repository."
+    exit 1
+fi
+
+# Ensure the specified project folder exists
+if [ ! -d "$PROJECT_FOLDER" ]; then
+    echo "Error: $PROJECT_FOLDER directory not found."
+    exit 1
+fi
+
+# Step 1: Copy required files and folders from project folder to git repo
+FILES_TO_COPY=(
+    ".project"
+    "variables.env"
+    "requirements.txt"
+    "preBuild.bash"
+    "postBuild.bash"
+    "apt.txt"
+)
+
+OVERWRITTEN_FILES=()
+SKIPPED_FILES=()
+
+for FILE in "${FILES_TO_COPY[@]}"; do
+    if [ -e "$PROJECT_FOLDER/$FILE" ]; then
+        if [ -e "$GIT_REPO/$FILE" ]; then
+            echo "Warning: $FILE already exists in $GIT_REPO. Overwriting..."
+            OVERWRITTEN_FILES+=("$FILE")
+        fi
+        cp -r "$PROJECT_FOLDER/$FILE" "$GIT_REPO/"
+    else
+        echo "Warning: $FILE not found in $PROJECT_FOLDER. Skipping..."
+        SKIPPED_FILES+=("$FILE")
+    fi
+done
+
+# Step 2: Edit spec.yaml file
+SPEC_FILE="$GIT_REPO/.project/spec.yaml"
+SPEC_FILE_STATUS=""
+if [ -f "$SPEC_FILE" ]; then
+    # Update fields in the YAML file using yq
+    if command -v yq > /dev/null 2>&1; then
+        yq eval ".meta.name = \"$REPO_NAME\"" -i "$SPEC_FILE"
+        yq eval ".meta.image = \"project-$REPO_NAME\"" -i "$SPEC_FILE"
+        SPEC_FILE_STATUS="spec.yaml updated"
+    else
+        # Fallback to sed for editing YAML if yq is not installed
+        if command -v gsed > /dev/null 2>&1; then
+            SED="gsed"
+        else
+            SED="sed"
+        fi
+        $SED -i '' "/^meta:/,/^.*$/ s/^\s*name:.*$/  name: $REPO_NAME/" "$SPEC_FILE"
+        $SED -i '' "/^meta:/,/^.*$/ s/^\s*image:.*$/  image: project-$REPO_NAME/" "$SPEC_FILE"
+        SPEC_FILE_STATUS="spec.yaml updated"
+    fi
+else
+    echo "Error: spec.yaml not found in .project. Skipping YAML edits."
+    SPEC_FILE_STATUS="spec.yaml missing"
+fi
+
+# Step 3: Stage and commit changes
+cd "$GIT_REPO" || exit 1
+git add .
+
+COMMIT_MESSAGE="converting to AI Workbench project by adding .project folder and environment configuration files"
+if [ ${#OVERWRITTEN_FILES[@]} -gt 0 ]; then
+    COMMIT_MESSAGE+="; overwritten files: ${OVERWRITTEN_FILES[*]}"
+else
+    COMMIT_MESSAGE+="; no files were overwritten"
+fi
+if [ ${#SKIPPED_FILES[@]} -gt 0 ]; then
+    COMMIT_MESSAGE+="; skipped files: ${SKIPPED_FILES[*]}"
+fi
+if [ -n "$SPEC_FILE_STATUS" ]; then
+    COMMIT_MESSAGE+="; $SPEC_FILE_STATUS"
+fi
+git commit -m "$COMMIT_MESSAGE"
+
+# Completion message
+echo "Repository '$REPO_NAME' successfully converted to AI Workbench project."
+
