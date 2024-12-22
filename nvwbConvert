@@ -59,11 +59,12 @@ done
 SPEC_FILE="$GIT_REPO/.project/spec.yaml"
 SPEC_FILE_STATUS=""
 if [ -f "$SPEC_FILE" ]; then
-    # Update fields in the YAML file using yq
+    echo "Editing $SPEC_FILE..."
     if command -v yq > /dev/null 2>&1; then
+        # Use yq to update the fields under the 'meta' section
         yq eval ".meta.name = \"$REPO_NAME\"" -i "$SPEC_FILE"
         yq eval ".meta.image = \"project-$REPO_NAME\"" -i "$SPEC_FILE"
-        SPEC_FILE_STATUS="spec.yaml updated"
+        SPEC_FILE_STATUS="spec.yaml updated with yq"
     else
         # Fallback to sed for editing YAML if yq is not installed
         if command -v gsed > /dev/null 2>&1; then
@@ -71,9 +72,14 @@ if [ -f "$SPEC_FILE" ]; then
         else
             SED="sed"
         fi
-        $SED -i '' "/^meta:/,/^.*$/ s/^\s*name:.*$/  name: $REPO_NAME/" "$SPEC_FILE"
-        $SED -i '' "/^meta:/,/^.*$/ s/^\s*image:.*$/  image: project-$REPO_NAME/" "$SPEC_FILE"
-        SPEC_FILE_STATUS="spec.yaml updated"
+
+        # Update the "name" field under "meta"
+        $SED -i '' "/^meta:/,/^[^ ]/ s/^\\s*name:.*/  name: $REPO_NAME/" "$SPEC_FILE"
+        
+        # Update the "image" field under "meta"
+        $SED -i '' "/^meta:/,/^[^ ]/ s/^\\s*image:.*/  image: project-$REPO_NAME/" "$SPEC_FILE"
+
+        SPEC_FILE_STATUS="spec.yaml updated with sed"
     fi
 else
     echo "Error: spec.yaml not found in .project. Skipping YAML edits."
