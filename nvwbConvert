@@ -55,6 +55,10 @@ for FILE in "${FILES_TO_COPY[@]}"; do
     fi
 done
 
+# Print the OVERWRITTEN_FILES list for debugging
+echo "Overwritten files: ${OVERWRITTEN_FILES[*]}"
+
+
 # Step 2: Edit spec.yaml file
 SPEC_FILE="$GIT_REPO/.project/spec.yaml"
 SPEC_FILE_STATUS=""
@@ -103,7 +107,7 @@ fi
 if [ -n "$SPEC_FILE_STATUS" ]; then
     COMMIT_MESSAGE+="; $SPEC_FILE_STATUS"
 fi
-git commit -m "$COMMIT_MESSAGE"
+git commit -am "$COMMIT_MESSAGE"
 
 # Completion message
 echo "Repository '$REPO_NAME' successfully converted to AI Workbench project."
